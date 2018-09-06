@@ -8,6 +8,7 @@ if exists('*minpac#init')
   " Auto loaded plugins
   call minpac#add('Shougo/deoplete.nvim')
   call minpac#add('Shougo/neosnippet')
+  call minpac#add('Shougo/defx.nvim')
   call minpac#add('w0rp/ale', { 'do': '!npm install -g prettier' })
   call minpac#add('Raimondi/delimitMate')
   call minpac#add('manasthakur/vim-commentor')
@@ -23,12 +24,10 @@ if exists('*minpac#init')
   call minpac#add('ludovicchabant/vim-gutentags')
   call minpac#add('phpactor/phpactor', { 'do': '!composer install' })
   call minpac#add('kristijanhusak/vim-js-file-import', { 'do': '!npm install' })
-  call minpac#add('kristijanhusak/vim-dirvish-git')
   call minpac#add('kristijanhusak/deoplete-phpactor')
   call minpac#add('vimwiki/vimwiki')
   call minpac#add('editorconfig/editorconfig-vim')
   call minpac#add('morhetz/gruvbox')
-  call minpac#add('justinmk/vim-dirvish')
   call minpac#add('andymass/vim-matchup')
   call minpac#add('haya14busa/vim-asterisk')
   call minpac#add('osyo-manga/vim-anzu')
@@ -44,7 +43,7 @@ command! PackStatus packadd minpac | source $MYVIMRC | call minpac#status()
 "}}}
 " ================ General Config ==================== {{{
 
-let g:loaded_netrwPlugin = 1                                                    "Do not load netrw so Dirvish can be autoloaded
+let g:loaded_netrwPlugin = 1                                                    "Do not load netrw
 let g:loaded_matchit = 1                                                        "Do not load matchit, use matchup plugin
 
 let g:mapleader = ','                                                           "Change leader to a comma
@@ -92,6 +91,7 @@ set updatetime=500                                                              
 set synmaxcol=300                                                               "Use syntax highlighting only for 300 columns
 set shortmess+=c                                                                "Disable completion menu messages in command line
 
+filetype plugin indent on
 syntax on
 silent! colorscheme gruvbox
 hi! link jsFuncCall GruvboxBlue
@@ -136,9 +136,10 @@ augroup vimrc
   autocmd InsertEnter * set nocul                                             "Remove cursorline highlight
   autocmd InsertLeave * set cul                                               "Add cursorline highlight in normal mode
   autocmd FocusGained,BufEnter * checktime                                    "Refresh file when vim gets focus
-  autocmd FileType dirvish call DirvishMappings()
   autocmd BufWritePre,FileWritePre * call mkdir(expand('<afile>:p:h'), 'p')
   autocmd BufEnter,BufWritePost,TextChanged,TextChangedI * call HighlightModified()
+  autocmd FileType defx call DefxSettings()
+  autocmd BufEnter * if isdirectory(expand(printf('#%s:p', expand('<abuf>')))) | call DefxOpen() | endif
 augroup END
 
 augroup php
@@ -347,15 +348,35 @@ function! CloseBuffer(...) abort
   return execute('q'.l:bang)
 endfunction
 
-function! DirvishMappings() abort
-  nnoremap <silent><buffer> o :call dirvish#open('edit', 0)<CR>
-  nnoremap <silent><buffer> s :call dirvish#open('vsplit', 1)<CR>
-  xnoremap <silent><buffer> o :call dirvish#open('edit', 0)<CR>
-  nmap <silent><buffer> u <Plug>(dirvish_up)
-  nmap <silent><buffer><Leader>n <Plug>(dirvish_quit)
-  silent! unmap <buffer> <C-p>
-  nnoremap <silent><buffer><expr>j line('.') == line('$') ? 'gg' : 'j'
-  nnoremap <silent><buffer><expr>k line('.') == 1 ? 'G' : 'k'
+function! DefxOpen(...) abort
+  let l:find_current_file = a:0 > 0
+
+  if !l:find_current_file
+    return execute(printf('Defx %s', getcwd()))
+  endif
+
+  return execute(printf('Defx %s -search=%s', expand('%:p:h'), expand('%:p')))
+endfunction
+
+function! DefxContextMenu() abort
+  let l:actions = ['new_file', 'new_directory', 'rename', 'remove', 'print']
+  let l:selection = confirm('Action?', "&New file\nNew &Folder\n&Rename\n&Delete\n&Print")
+  silent exe 'redraw'
+
+  return feedkeys(defx#do_action(l:actions[l:selection - 1]))
+endfunction
+
+function! DefxSettings() abort
+  nnoremap <silent><buffer><expr> <CR> defx#do_action('open')
+  nnoremap <silent><buffer>m :call DefxContextMenu()<CR>
+  nnoremap <silent><buffer><expr> o defx#do_action('open')
+  nnoremap <silent><buffer><expr> s defx#do_action('open', 'vsplit')
+  nnoremap <silent><buffer><expr> R defx#do_action('redraw')
+  nnoremap <silent><buffer><expr> u defx#do_action('cd', ['..'])
+  nnoremap <silent><buffer><expr> <Space> defx#do_action('toggle_select') . 'j'
+  nnoremap <silent><buffer><expr> j line('.') == line('$') ? 'gg' : 'j'
+  nnoremap <silent><buffer><expr> k line('.') == 1 ? 'G' : 'k'
+  nnoremap <silent><buffer> q :call execute("bn\<BAR>bw#")<CR>
 endfunction
 
 " }}}
@@ -434,8 +455,8 @@ nnoremap <Leader>E :copen<CR>
 nnoremap <silent><Leader>q :call CloseBuffer()<CR>
 nnoremap <silent><Leader>Q :call CloseBuffer(1)<CR>
 
-nnoremap <Leader>hf :Dirvish %<CR>
-nnoremap <Leader>n :Dirvish<CR>
+nnoremap <Leader>hf :call DefxOpen(v:true)<CR>
+nnoremap <Leader>n :call DefxOpen()<CR>
 
 " Toggle between last 2 buffers
 nnoremap <leader><tab> <c-^>
@@ -495,8 +516,6 @@ nnoremap <Leader>/ :FlyGrep<CR>
 let g:ctrlsf_auto_close = 0                                                     "Do not close search when file is opened
 let g:ctrlsf_mapping = {'vsplit': 's'}                                          "Mapping for opening search result in vertical split
 
-let g:dirvish_mode = ':sort ,^.*[\/],'                                          "List directories first in dirvish
-
 let g:deoplete#enable_at_startup = 1                                            "Enable deoplete on startup
 let g:deoplete#camel_case = 1                                                   "Autocomplete files relative to current buffer path
 let g:deoplete#file#enable_buffer_path = 1                                      "Show only 30 entries in list and allow smart case autocomplete
@@ -528,6 +547,5 @@ let g:LanguageClient_serverCommands = {
 \ 'javascript.jsx': ['javascript-typescript-stdio'],
 \ 'typescript': ['javascript-typescript-stdio'],
 \ }
-
 " }}}
 " vim:foldenable:foldmethod=marker
